@@ -109,9 +109,9 @@ class BatchOpeningTests(unittest.TestCase):
                  clickable=True)
             for i in range(9)
         ]
-        # Position #6 is completed: do not use card #8 as a replacement.
+        # Position #6 is redeem-only: do not use card #8 as a replacement.
         cards[5] = Card("Reward tiles", 5, "Card #6",
-                        CardStatus.COMPLETED, clickable=True)
+                        CardStatus.REDEEM, clickable=True)
 
         driver = Mock()
         driver.current_window_handle = "dashboard"
@@ -137,8 +137,37 @@ class BatchOpeningTests(unittest.TestCase):
             self.assertEqual(result["selection"], {"skip": 4, "open": 3})
             self.assertEqual([x["position"] for x in result["open_results"]], [5, 6, 7])
             self.assertEqual([x["status"] for x in result["open_results"]],
-                             ["opened", "skipped_completed_or_redeem", "opened"])
+                             ["opened", "skipped_redeem", "opened"])
             driver.quit.assert_called_once()
+
+    def test_batch_also_opens_a_completed_card_at_selected_position(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        from unittest.mock import Mock, patch
+        from pyrewards.cli import parse_args, run
+
+        cards = [
+            Card("Reward tiles", i, f"Card #{i + 1}", CardStatus.COMPLETED,
+                 clickable=True)
+            for i in range(7)
+        ]
+        driver = Mock(current_window_handle="dashboard")
+        with tempfile.TemporaryDirectory() as temp:
+            args = parse_args(["--skip", "4", "--open", "3",
+                               "--report", str(Path(temp) / "completed.json")])
+            with patch("pyrewards.cli.create_driver", return_value=driver), \
+                 patch("pyrewards.cli.wait_for_page"), \
+                 patch("pyrewards.cli.wait_for_cards", return_value=True), \
+                 patch("pyrewards.cli.get_streak", return_value=None), \
+                 patch("pyrewards.cli.discover_cards", return_value=cards), \
+                 patch("pyrewards.cli.open_card_in_own_tab") as opener, \
+                 patch("pyrewards.cli.sys.stdin.isatty", return_value=True), \
+                 patch("builtins.input", return_value=""), \
+                 redirect_stdout(StringIO()):
+                self.assertEqual(run(args), 0)
+            self.assertEqual(opener.call_count, 3)
+            self.assertEqual([x.args[1].title for x in opener.call_args_list],
+                             ["Card #5", "Card #6", "Card #7"])
 
     def test_batch_mode_without_terminal_does_not_instantly_close_new_tabs(self):
         from unittest.mock import Mock, patch

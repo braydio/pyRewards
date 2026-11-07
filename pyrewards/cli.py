@@ -173,8 +173,8 @@ def run(args: argparse.Namespace) -> int:
                 print("No cards at those positions. Nothing to open.")
             for number, card in selected:
                 item = {"position": number, "title": card.title, "status": ""}
-                if card.status in (CardStatus.COMPLETED, CardStatus.REDEEM):
-                    item["status"] = "skipped_completed_or_redeem"
+                if card.status == CardStatus.REDEEM:
+                    item["status"] = "skipped_redeem"
                 elif not card.can_open:
                     item["status"] = "skipped_not_clickable"
                 else:

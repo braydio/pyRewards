@@ -14,7 +14,7 @@ Use `--skip N --open M` to skip the first N positions in pyRewards' **numbered l
 .\.venv\Scripts\python.exe pyRewards.py --skip 4 --open 3 --run-quizzes
 ```
 
-The numbering is exactly what pyRewards prints in its initial snapshot, starting at **1**. Completed, redeem, or nonclickable cards still count toward the requested positions but are reported as skipped; they are not silently replaced with later cards. If there are fewer cards than requested, only the existing positions are considered.
+The numbering is exactly what pyRewards prints in its initial snapshot, starting at **1**. Completed cards are still opened if clickable, so every requested position is attempted. Redeem-only or nonclickable cards still count toward the requested positions but are reported as skipped; they are not silently replaced with later cards. If there are fewer cards than requested, only the existing positions are considered.
 
 A fresh browser tab opens the dashboard for **each** card, and its activity tab stays open while the next card is processed. If the card itself opens another tab, pyRewards keeps the resulting activity tab and closes its temporary launcher. It leaves all selected activity tabs open at the end until you press Enter in PowerShell; then Selenium shuts down. The JSON report has `selection` and `open_results` with positions and outcomes, without activity URLs.
 
