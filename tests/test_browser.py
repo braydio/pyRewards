@@ -88,5 +88,91 @@ class ReactCardTests(unittest.TestCase):
         self.card.click.assert_not_called()
 
 
+class TabSwitcher:
+    def __init__(self, driver):
+        self.driver = driver
+
+    def window(self, handle):
+        if handle not in self.driver.window_handles:
+            raise ValueError("Unknown window")
+        self.driver.current_window_handle = handle
+
+    def new_window(self, kind):
+        assert kind == "tab"
+        handle = f"tab-{self.driver.next_tab}"
+        self.driver.next_tab += 1
+        self.driver.window_handles.append(handle)
+        self.driver.current_window_handle = handle
+
+
+class FakeWindowDriver:
+    def __init__(self):
+        self.window_handles = ["dashboard", "older-activity"]
+        self.current_window_handle = "dashboard"
+        self.switch_to = TabSwitcher(self)
+        self.next_tab = 1
+        self.visited = []
+
+    def get(self, url):
+        self.visited.append((self.current_window_handle, url))
+
+    def close(self):
+        self.window_handles.remove(self.current_window_handle)
+        self.current_window_handle = self.window_handles[-1]
+
+
+class SeparateTabTests(unittest.TestCase):
+    def setUp(self):
+        from pyrewards.core import Card
+        self.driver = FakeWindowDriver()
+        self.card = Card("Reward tiles", 4, "Card #5", CardStatus.UNKNOWN,
+                         clickable=True)
+
+    def test_same_tab_navigation_keeps_own_activity_tab(self):
+        from pyrewards.browser import open_card_in_own_tab
+
+        with patch("pyrewards.browser.wait_for_cards", return_value=True), \
+             patch("pyrewards.browser.wait_for_page"), \
+             patch("pyrewards.browser.open_card_for_user") as open_card:
+            tab = open_card_in_own_tab(self.driver, self.card, 3, "dashboard")
+
+        self.assertEqual(tab, "tab-1")
+        self.assertEqual(self.driver.window_handles,
+                         ["dashboard", "older-activity", "tab-1"])
+        self.assertEqual(self.driver.visited[0][0], "tab-1")
+        open_card.assert_called_once()
+
+    def test_popup_click_discards_launcher_but_keeps_activity_tab(self):
+        from pyrewards.browser import open_card_in_own_tab
+
+        def popup(driver, card, timeout):
+            driver.window_handles.append("quiz-popup")
+            driver.current_window_handle = "quiz-popup"
+
+        with patch("pyrewards.browser.wait_for_cards", return_value=True), \
+             patch("pyrewards.browser.wait_for_page"), \
+             patch("pyrewards.browser.open_card_for_user", side_effect=popup):
+            tab = open_card_in_own_tab(self.driver, self.card, 3, "dashboard")
+
+        self.assertEqual(tab, "quiz-popup")
+        self.assertEqual(self.driver.window_handles,
+                         ["dashboard", "older-activity", "quiz-popup"])
+        self.assertEqual(self.driver.current_window_handle, "quiz-popup")
+
+    def test_failed_click_cleans_only_attempt_tabs(self):
+        from pyrewards.browser import open_card_in_own_tab
+
+        with patch("pyrewards.browser.wait_for_cards", return_value=True), \
+             patch("pyrewards.browser.wait_for_page"), \
+             patch("pyrewards.browser.open_card_for_user",
+                   side_effect=LookupError("Card moved")):
+            with self.assertRaisesRegex(LookupError, "Card moved"):
+                open_card_in_own_tab(self.driver, self.card, 3, "dashboard")
+
+        self.assertEqual(self.driver.window_handles,
+                         ["dashboard", "older-activity"])
+        self.assertEqual(self.driver.current_window_handle, "dashboard")
+
+
 if __name__ == "__main__":
     unittest.main()
