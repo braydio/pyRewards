@@ -34,9 +34,8 @@ class BrowserSelectionTests(unittest.TestCase):
         from pyrewards.browser import create_driver
 
         with tempfile.TemporaryDirectory() as temp:
-            with patch("pyrewards.browser.shutil.which", return_value="/usr/bin/chromium"), (
-                patch("pyrewards.browser.webdriver.Chrome") as launch
-            ):
+            with patch("pyrewards.browser.shutil.which", return_value="/usr/bin/chromium"), \
+                 patch("pyrewards.browser.webdriver.Chrome") as launch:
                 create_driver("chromium", Path(temp) / "profile")
                 launch.assert_called_once()
                 options = launch.call_args.kwargs["options"]
@@ -46,9 +45,8 @@ class BrowserSelectionTests(unittest.TestCase):
         from pyrewards.browser import create_driver
 
         with tempfile.TemporaryDirectory() as temp:
-            with patch("pyrewards.browser.shutil.which", return_value=None), (
-                patch("pyrewards.browser.webdriver.Chrome") as launch
-            ):
+            with patch("pyrewards.browser.shutil.which", return_value=None), \
+                 patch("pyrewards.browser.webdriver.Chrome") as launch:
                 with self.assertRaisesRegex(FileNotFoundError, "sudo pacman"):
                     create_driver("chromium", Path(temp) / "profile")
                 launch.assert_not_called()
