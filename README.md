@@ -2,6 +2,27 @@
 
 A small Python/Selenium learning project for **inspecting the Microsoft Rewards dashboard** and optionally opening individual activities **for you to complete manually**. It retains the original Microsoft Edge workflow, but is easier to run, debug, and extend.
 
+## Optional quiz navigation (restored from the 2024 exercise)
+
+This project originally had `start_quiz()`, `take_quiz()`, and `get_current_question()` functions for Bing's legacy Supersonic quiz interface. The new `pyrewards/quiz.py` restores and hardens that flow as a bounded, opt-in exercise.
+
+On Windows, from the project directory:
+
+```powershell
+.\.venv\Scripts\python.exe pyRewards.py --interactive --run-quizzes
+```
+
+Choose **o** for a card. After the card opens in Edge, the script searches for known quiz controls (`rqStartQuiz`, `rqHeaderCredits`, `rqAnswerOptionN`, `quizCompleteContainer`). If found, it starts the quiz, clicks answers in numeric order, and checks whether the original filled-circle progress indicator advances before proceeding. You can **watch each click** using the default 0.7-second pause. The tool does not generate Bing searches, attempt verification challenges, or guess controls on unsupported pages.
+
+```powershell
+# Slower, easy-to-observe clicks and a stricter per-quiz question limit
+.\.venv\Scripts\python.exe pyRewards.py --interactive --run-quizzes --quiz-pause 1.5 --max-quiz-questions 10
+```
+
+**Tracking:** The `runs/latest.json` report now includes `quiz_runs` with question progress, attempted option IDs, and terminal statuses: `completed`, `not_quiz`, `unsupported`, `stalled`, `limit_reached`, or `error`. No raw page HTML, cookies, or activity URLs are logged. **Completed is reported only when the quiz's completion marker appears**, not merely when an option is clicked.
+
+The legacy IDs are not a guaranteed description of today's Rewards interface; an unrecognized quiz will stop with `unsupported`. This has been unit-tested using a simulated quiz state machine, **not live-tested against your account**.
+
 ## What changed in v2
 
 - Finds cards dynamically, including newer React tiles with `p.text-globalBody2Strong` titles and `+10` badges, rather than assuming fixed legacy card counts.
@@ -57,7 +78,7 @@ The scraper checks Rewards dashboard card containers and the status icons or acc
 
 ## Program rules and limitations
 
-Microsoft Rewards requires genuine activity. **Bot/macro-generated searches do not count as valid Rewards searches**, and automated patterns can result in earning limitations or suspension. This tool does **not** generate Bing searches, automate quizzes, bypass authentication, or promise to collect points. Interactive mode deliberately asks you before each action. Check Microsoft's [Rewards terms](https://www.microsoft.com/en/servicesagreement) before using any automation.
+Microsoft Rewards requires genuine activity. **Bot/macro-generated searches do not count as valid Rewards searches**, and automated patterns can result in earning limitations or suspension. This tool does **not** generate Bing searches, bypass authentication, or promise to collect points. Quiz interactions are opt-in via `--interactive --run-quizzes` and may affect your live Rewards account even if you are only studying the Selenium behavior. Review the program rules before running it. Check Microsoft's [Rewards terms](https://www.microsoft.com/en/servicesagreement) before using any automation.
 
 ## Development
 
@@ -73,5 +94,7 @@ The older `bingPypett.py` entry point is retained as a compatibility shim; its r
 - **No cards discovered:** Check that you are signed in, the dashboard has loaded, and the CSS selectors still match the current page.
 - **Browser fails to start:** Update Selenium and the installed browser, and verify the dedicated browser profile isn't locked by another process.
 - **Card remains unknown:** The dashboard did not expose a recognized completion marker. This does not imply it was collected.
+- **Quiz not detected:** The opened tab may not contain the older `rq*` quiz controls. The runner logs `not_quiz` or `unsupported`, and won't click unrelated content.
+- **Quiz stalls:** No observable filled-circle or question-text change occurred after trying supported options. This is logged as `stalled` rather than looping forever.
 - **Opening a card fails:** The script refuses ambiguous duplicate titles or changed URLs rather than clicking a different activity. The tile itself or its wrapper may still be inaccessible depending on the dashboard's JavaScript.
 - **New cards not shown:** The newer React layout uses `div.p-paddingCardBodyDefaultOutside` containing `p.text-globalBody2Strong`. If that changes again, update `SECTION_SELECTORS` and `MODERN_CARD_TITLE_SELECTOR` in `pyrewards/core.py`.

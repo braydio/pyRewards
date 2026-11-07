@@ -22,6 +22,7 @@ from .browser import (
     wait_for_page,
 )
 from .core import Card, CardStatus, REWARDS_URL
+from .quiz import run_quiz
 
 LOG = logging.getLogger("pyrewards")
 
@@ -52,8 +53,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path("runs") / "latest.json",
         help="Where to save the status report (no account identifiers or URLs).",
     )
+    parser.add_argument("--run-quizzes", action="store_true",
+                        help="After opening a card, run recognized quiz questions using the historical filled-circle strategy.")
+    parser.add_argument("--max-quiz-questions", type=positive_int, default=20)
+    parser.add_argument("--quiz-pause", type=float, default=0.7,
+                        help="Seconds between quiz clicks so progress is visible (default: 0.7).")
     parser.add_argument("--verbose", action="store_true")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.run_quizzes and not args.interactive:
+        parser.error("--run-quizzes requires --interactive")
+    if not 0 <= args.quiz_pause <= 10:
+        parser.error("--quiz-pause must be between 0 and 10 seconds")
+    return args
 
 
 def show_cards(cards: list[Card]) -> None:
@@ -74,7 +85,8 @@ def show_cards(cards: list[Card]) -> None:
 
 def save_report(path: Path, started: str, browser: str, initial: list[Card],
                 final: list[Card], streak_before: int | None,
-                streak_after: int | None, manually_opened: int) -> None:
+                streak_after: int | None, manually_opened: int,
+                quiz_runs: list[dict] | None = None) -> None:
     data = {
         "started_at": started,
         "finished_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -82,6 +94,7 @@ def save_report(path: Path, started: str, browser: str, initial: list[Card],
         "streak_before": streak_before,
         "streak_after": streak_after,
         "opened_for_manual_completion": manually_opened,
+        "quiz_runs": quiz_runs or [],
         "before": [card.report_entry() for card in initial],
         "after": [card.report_entry() for card in final],
     }
@@ -114,6 +127,7 @@ def run(args: argparse.Namespace) -> int:
         print("Initial dashboard snapshot")
         show_cards(initial)
         opened = 0
+        quiz_runs: list[dict] = []
 
         if args.interactive:
             for card in initial:
@@ -129,7 +143,29 @@ def run(args: argparse.Namespace) -> int:
                 try:
                     open_card_for_user(driver, card, args.timeout)
                     opened += 1
-                    input("Complete the activity yourself in the browser, then press Enter...")
+                    if args.run_quizzes:
+                        quiz = run_quiz(
+                            driver, card.title,
+                            max_questions=args.max_quiz_questions,
+                            pause=args.quiz_pause,
+                        )
+                        quiz_runs.append({
+                            "card": quiz.card,
+                            "status": quiz.status,
+                            "reason": quiz.reason,
+                            "questions_advanced": quiz.questions_advanced,
+                            "attempted_options": quiz.attempted_options,
+                            "events": quiz.events,
+                        })
+                        print(
+                            f"Quiz status: {quiz.status}; "
+                            f"{quiz.questions_advanced} questions advanced, "
+                            f"{quiz.attempted_options} answers attempted. "
+                            f"{quiz.reason}"
+                        )
+                        input("Review the quiz in Edge, then press Enter to continue...")
+                    else:
+                        input("Complete the activity yourself in the browser, then press Enter...")
                 except (LookupError, WebDriverException) as exc:
                     LOG.warning("Could not open %s: %s", card.title, exc)
                 finally:
@@ -143,7 +179,7 @@ def run(args: argparse.Namespace) -> int:
             print(f"Streak: {streak_before if streak_before is not None else '?'} -> "
                   f"{streak_after if streak_after is not None else '?'}")
         save_report(args.report, started, args.browser, initial, final,
-                    streak_before, streak_after, opened)
+                    streak_before, streak_after, opened, quiz_runs)
         return 0
     except (OSError, WebDriverException, RuntimeError) as exc:
         LOG.error("Browser run failed: %s", exc)
