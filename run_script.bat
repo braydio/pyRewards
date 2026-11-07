@@ -1,12 +1,12 @@
 @echo off
-REM Navigate to the project directory
-cd "C:\Users\chaff\Documents\Python\projects\rewardsMS"
+setlocal
+cd /d "%~dp0"
 
-REM Activate the virtual environment
-call .venv\Scripts\activate
+if exist ".venv\Scripts\python.exe" (
+    ".venv\Scripts\python.exe" pyRewards.py --interactive
+) else (
+    py -3 pyRewards.py --interactive
+)
 
-REM Run the Python script
-python pyRewards.py
-
-REM Pause to keep the command window open after execution
+echo.
 pause
