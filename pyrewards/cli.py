@@ -62,7 +62,9 @@ def show_cards(cards: list[Card]) -> None:
         if section != card.section:
             section = card.section
             print(f"\n{section}")
-        print(f"  [{card.status.value:9}] {card.title}")
+        print(f"  [{card.status.value:9}] {card.title}" + (f" (+{card.points_offer} offered)" if card.points_offer is not None else ""))
+        if card.description:
+            print(f"             {card.description}")
     counts = Counter(card.status.value for card in cards)
     print(
         f"\nTotal: {len(cards)} | completed: {counts['completed']} | "
@@ -115,7 +117,7 @@ def run(args: argparse.Namespace) -> int:
 
         if args.interactive:
             for card in initial:
-                if card.status in (CardStatus.COMPLETED, CardStatus.REDEEM) or not card.href:
+                if card.status in (CardStatus.COMPLETED, CardStatus.REDEEM) or not card.can_open:
                     continue
                 answer = input(f"\n{card.title}\n[o]pen / [s]kip / [q]uit: ").strip().lower()
                 if answer == "q":

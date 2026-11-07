@@ -4,8 +4,10 @@ A small Python/Selenium learning project for **inspecting the Microsoft Rewards 
 
 ## What changed in v2
 
-- Finds cards from the page rather than assuming three daily cards and 18 more-activity slots.
+- Finds cards dynamically, including newer React tiles with `p.text-globalBody2Strong` titles and `+10` badges, rather than assuming fixed legacy card counts.
 - Distinguishes **completed**, **available**, **unknown**, and **redeem** cards. Unknown never means collected.
+- Opens the enclosing link/button when available, or clicks the tile body for React event handlers, after an explicit interactive prompt.
+- Re-identifies cards by title before clicking, to avoid opening a different card if the dashboard reorders.
 - Correctly detects new tabs and returns to the dashboard, without closing tabs that existed beforehand.
 - Uses Selenium Manager, so there is no separate EdgeDriver-manager dependency.
 - Uses a dedicated persistent browser profile for manual sign-in. No cookie-export script or passwords in source code.
@@ -71,4 +73,5 @@ The older `bingPypett.py` entry point is retained as a compatibility shim; its r
 - **No cards discovered:** Check that you are signed in, the dashboard has loaded, and the CSS selectors still match the current page.
 - **Browser fails to start:** Update Selenium and the installed browser, and verify the dedicated browser profile isn't locked by another process.
 - **Card remains unknown:** The dashboard did not expose a recognized completion marker. This does not imply it was collected.
-- **Opening a card fails:** The page may have reordered the cards; rerun inspection instead of blindly clicking a different link.
+- **Opening a card fails:** The script refuses ambiguous duplicate titles or changed URLs rather than clicking a different activity. The tile itself or its wrapper may still be inaccessible depending on the dashboard's JavaScript.
+- **New cards not shown:** The newer React layout uses `div.p-paddingCardBodyDefaultOutside` containing `p.text-globalBody2Strong`. If that changes again, update `SECTION_SELECTORS` and `MODERN_CARD_TITLE_SELECTOR` in `pyrewards/core.py`.
