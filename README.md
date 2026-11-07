@@ -39,7 +39,7 @@ python -m venv .venv
 .venv/bin/python pyRewards.py --browser chromium --interactive
 ```
 
-This explicitly selects Arch's \`/usr/bin/chromium\` instead of assuming Google Chrome is installed. The browser will open in your graphical session; do not launch it with \`sudo\`. Selenium Manager can provision the corresponding ChromeDriver if necessary (a network connection may be required on first use). A separate Chromium profile is used for manual sign-in.
+This explicitly selects Arch's `/usr/bin/chromium` instead of assuming Google Chrome is installed. The browser will open in your graphical session; do not launch it with `sudo`. Selenium Manager can provision the corresponding ChromeDriver if necessary (a network connection may be required on first use). A separate Chromium profile is used for manual sign-in.
 
 On Linux/macOS, activate with `source .venv/bin/activate` and use `python pyRewards.py`.
 
