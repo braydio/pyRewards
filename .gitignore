@@ -1,2 +1,13 @@
-.venv
-venv
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.env
+.env.*
+cookies.json
+rewards_log.txt
+runs/
+.pyrewards/
+.DS_Store
+.idea/
