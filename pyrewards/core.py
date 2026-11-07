@@ -11,8 +11,9 @@ from urllib.parse import urlsplit
 
 REWARDS_URL = "https://rewards.microsoft.com/"
 
-# The first selector with results wins for each section. Kept in one place
-# because Microsoft's dashboard markup can change independently of the code.
+# Microsoft's dashboard uses both legacy mee-card components and newer React
+# tiles. Keep the selectors centralized so new markup can be added safely.
+MODERN_CARD_TITLE_SELECTOR = "p.text-globalBody2Strong"
 SECTION_SELECTORS = {
     "Daily set": (
         "mee-rewards-daily-set-section mee-card",
@@ -21,6 +22,9 @@ SECTION_SELECTORS = {
     "More activities": (
         "#more-activities mee-card",
         "mee-rewards-more-activities-section mee-card",
+    ),
+    "Reward tiles": (
+        "div.p-paddingCardBodyDefaultOutside",
     ),
 }
 
@@ -39,19 +43,30 @@ class Card:
     title: str
     status: CardStatus
     href: str = field(default="", repr=False)
+    # New React tiles may use a clickable wrapper or onclick handler without
+    # an <a href>. None retains legacy inference from href for older callers.
+    clickable: bool | None = None
+    description: str = ""
+    points_offer: int | None = None
 
-    def report_entry(self) -> dict[str, str | bool]:
+    @property
+    def can_open(self) -> bool:
+        return bool(self.href) if self.clickable is None else self.clickable
+
+    def report_entry(self) -> dict[str, str | bool | int | None]:
         """Never write activity URLs, which may contain session parameters."""
         return {
             "section": self.section,
             "title": self.title,
+            "description": self.description,
+            "points_offer": self.points_offer,
             "status": self.status.value,
-            "clickable": bool(self.href),
+            "clickable": self.can_open,
         }
 
 
 def classify_status(classes: Iterable[str], aria_label: str = "") -> CardStatus:
-    """Be conservative: unrecognized icons are UNKNOWN, not completed."""
+    """Be conservative: an offered +10 points is not proof of collection."""
     tokens = set(re.split(r"\s+", " ".join(classes).lower().strip()))
     if any(
         "skypecirclecheck" in token
@@ -71,6 +86,12 @@ def is_redeem_card(title: str, aria_label: str = "", href: str = "") -> bool:
     text = f"{title} {aria_label}".lower()
     path = urlsplit(href).path.lower()
     return "redeem now" in text or path.startswith("/redeem")
+
+
+def offered_points(raw: str) -> int | None:
+    """Extract a promotional +N badge, never interpreted as earned points."""
+    match = re.fullmatch(r"\s*\+\s*(\d{1,5})\s*", raw)
+    return int(match.group(1)) if match else None
 
 
 def extract_streak(aria_label: str | None) -> int | None:

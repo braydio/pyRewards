@@ -17,11 +17,13 @@ from .browser import (
     discover_cards,
     get_streak,
     open_card_for_user,
+    open_card_in_own_tab,
     return_to_dashboard,
     wait_for_cards,
     wait_for_page,
 )
 from .core import Card, CardStatus, REWARDS_URL
+from .quiz import run_quiz
 
 LOG = logging.getLogger("pyrewards")
 
@@ -31,6 +33,21 @@ def positive_int(raw: str) -> int:
     if number < 1:
         raise argparse.ArgumentTypeError("Timeout must be at least 1 second")
     return number
+
+
+def non_negative_int(raw: str) -> int:
+    try:
+        number = int(raw)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError("Expected a non-negative integer") from exc
+    if number < 0:
+        raise argparse.ArgumentTypeError("Expected a non-negative integer")
+    return number
+
+
+def select_cards(cards: list[Card], skip: int, open_count: int) -> list[tuple[int, Card]]:
+    """Return fixed 1-based positions. Skipped/non-actionable cards are not replaced."""
+    return list(enumerate(cards[skip: skip + open_count], start=skip + 1))
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -46,23 +63,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--timeout", type=positive_int, default=15)
     parser.add_argument("--interactive", action="store_true", help="Prompt before opening each activity.")
+    parser.add_argument("--skip", type=non_negative_int, default=0,
+                        help="Skip this many cards from the top of the numbered list (default: 0).")
+    parser.add_argument("--open", dest="open_count", type=positive_int, default=0,
+                        help="Automatically open this many subsequent card positions, each in its own tab.")
     parser.add_argument(
         "--report",
         type=Path,
         default=Path("runs") / "latest.json",
         help="Where to save the status report (no account identifiers or URLs).",
     )
+    parser.add_argument("--run-quizzes", action="store_true",
+                        help="After opening a card, run recognized quiz questions using the historical filled-circle strategy.")
+    parser.add_argument("--max-quiz-questions", type=positive_int, default=20)
+    parser.add_argument("--quiz-pause", type=float, default=0.7,
+                        help="Seconds between quiz clicks so progress is visible (default: 0.7).")
     parser.add_argument("--verbose", action="store_true")
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.skip and not args.open_count:
+        parser.error("--skip requires --open")
+    if args.open_count and args.interactive:
+        parser.error("--open and --interactive are separate modes; choose one")
+    if args.run_quizzes and not (args.interactive or args.open_count):
+        parser.error("--run-quizzes requires --interactive or --open")
+    if not 0 <= args.quiz_pause <= 10:
+        parser.error("--quiz-pause must be between 0 and 10 seconds")
+    return args
 
 
 def show_cards(cards: list[Card]) -> None:
     section = None
-    for card in cards:
+    for number, card in enumerate(cards, start=1):
         if section != card.section:
             section = card.section
             print(f"\n{section}")
-        print(f"  [{card.status.value:9}] {card.title}")
+        print(f"  {number:>3}. [{card.status.value:9}] {card.title}" + (f" (+{card.points_offer} offered)" if card.points_offer is not None else ""))
+        if card.description:
+            print(f"             {card.description}")
     counts = Counter(card.status.value for card in cards)
     print(
         f"\nTotal: {len(cards)} | completed: {counts['completed']} | "
@@ -72,7 +109,10 @@ def show_cards(cards: list[Card]) -> None:
 
 def save_report(path: Path, started: str, browser: str, initial: list[Card],
                 final: list[Card], streak_before: int | None,
-                streak_after: int | None, manually_opened: int) -> None:
+                streak_after: int | None, manually_opened: int,
+                quiz_runs: list[dict] | None = None,
+                selection: dict | None = None,
+                open_results: list[dict] | None = None) -> None:
     data = {
         "started_at": started,
         "finished_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -80,6 +120,9 @@ def save_report(path: Path, started: str, browser: str, initial: list[Card],
         "streak_before": streak_before,
         "streak_after": streak_after,
         "opened_for_manual_completion": manually_opened,
+        "quiz_runs": quiz_runs or [],
+        "selection": selection,
+        "open_results": open_results or [],
         "before": [card.report_entry() for card in initial],
         "after": [card.report_entry() for card in final],
     }
@@ -108,14 +151,68 @@ def run(args: argparse.Namespace) -> int:
             LOG.error("No supported cards found. You may be signed out or the dashboard markup may have changed.")
             return 2
 
+        root_handle = driver.current_window_handle
         streak_before = get_streak(driver)
         print("Initial dashboard snapshot")
         show_cards(initial)
         opened = 0
+        quiz_runs: list[dict] = []
+        open_results: list[dict] = []
+
+        if args.open_count:
+            if not sys.stdin.isatty():
+                LOG.error("Automatic opening requires an interactive terminal so the tabs can stay open for review.")
+                return 2
+
+            selected = select_cards(initial, args.skip, args.open_count)
+            print(
+                f"\nOpening up to {args.open_count} card positions after skipping "
+                f"{args.skip} (numbers are from the list above)."
+            )
+            if not selected:
+                print("No cards at those positions. Nothing to open.")
+            for number, card in selected:
+                item = {"position": number, "title": card.title, "status": ""}
+                if card.status == CardStatus.REDEEM:
+                    item["status"] = "skipped_redeem"
+                elif not card.can_open:
+                    item["status"] = "skipped_not_clickable"
+                else:
+                    try:
+                        open_card_in_own_tab(driver, card, args.timeout, root_handle)
+                        opened += 1
+                        item["status"] = "opened"
+                        if args.run_quizzes:
+                            quiz = run_quiz(
+                                driver, card.title,
+                                max_questions=args.max_quiz_questions,
+                                pause=args.quiz_pause,
+                            )
+                            quiz_runs.append({
+                                "card": quiz.card,
+                                "position": number,
+                                "status": quiz.status,
+                                "reason": quiz.reason,
+                                "questions_advanced": quiz.questions_advanced,
+                                "attempted_options": quiz.attempted_options,
+                                "events": quiz.events,
+                            })
+                            print(
+                                f"  Quiz: {quiz.status} | "
+                                f"{quiz.questions_advanced} questions advanced"
+                            )
+                    except (LookupError, WebDriverException) as exc:
+                        item["status"] = "failed"
+                        item["error"] = type(exc).__name__
+                        LOG.warning("Card %s (%s): %s", number, card.title, exc)
+                    finally:
+                        driver.switch_to.window(root_handle)
+                print(f"  #{number}: {item['status']} - {card.title}")
+                open_results.append(item)
 
         if args.interactive:
             for card in initial:
-                if card.status in (CardStatus.COMPLETED, CardStatus.REDEEM) or not card.href:
+                if card.status in (CardStatus.COMPLETED, CardStatus.REDEEM) or not card.can_open:
                     continue
                 answer = input(f"\n{card.title}\n[o]pen / [s]kip / [q]uit: ").strip().lower()
                 if answer == "q":
@@ -127,12 +224,39 @@ def run(args: argparse.Namespace) -> int:
                 try:
                     open_card_for_user(driver, card, args.timeout)
                     opened += 1
-                    input("Complete the activity yourself in the browser, then press Enter...")
+                    if args.run_quizzes:
+                        quiz = run_quiz(
+                            driver, card.title,
+                            max_questions=args.max_quiz_questions,
+                            pause=args.quiz_pause,
+                        )
+                        quiz_runs.append({
+                            "card": quiz.card,
+                            "status": quiz.status,
+                            "reason": quiz.reason,
+                            "questions_advanced": quiz.questions_advanced,
+                            "attempted_options": quiz.attempted_options,
+                            "events": quiz.events,
+                        })
+                        print(
+                            f"Quiz status: {quiz.status}; "
+                            f"{quiz.questions_advanced} questions advanced, "
+                            f"{quiz.attempted_options} answers attempted. "
+                            f"{quiz.reason}"
+                        )
+                        input("Review the quiz in Edge, then press Enter to continue...")
+                    else:
+                        input("Complete the activity yourself in the browser, then press Enter...")
                 except (LookupError, WebDriverException) as exc:
                     LOG.warning("Could not open %s: %s", card.title, exc)
                 finally:
                     return_to_dashboard(driver, previous_handles, args.timeout)
 
+        if args.open_count:
+            driver.switch_to.window(root_handle)
+            driver.refresh()
+            wait_for_page(driver, args.timeout)
+            wait_for_cards(driver, args.timeout)
         final = discover_cards(driver)
         streak_after = get_streak(driver)
         print("\nFinal dashboard snapshot")
@@ -141,7 +265,15 @@ def run(args: argparse.Namespace) -> int:
             print(f"Streak: {streak_before if streak_before is not None else '?'} -> "
                   f"{streak_after if streak_after is not None else '?'}")
         save_report(args.report, started, args.browser, initial, final,
-                    streak_before, streak_after, opened)
+                    streak_before, streak_after, opened, quiz_runs,
+                    selection={"skip": args.skip, "open": args.open_count}
+                    if args.open_count else None,
+                    open_results=open_results)
+        if args.open_count and opened:
+            input(
+                f"\n{opened} activity tab(s) are open for review. "
+                "Press Enter to close the Selenium browser and finish..."
+            )
         return 0
     except (OSError, WebDriverException, RuntimeError) as exc:
         LOG.error("Browser run failed: %s", exc)

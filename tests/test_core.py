@@ -6,6 +6,7 @@ from pyrewards.core import (
     classify_status,
     extract_streak,
     is_redeem_card,
+    offered_points,
 )
 
 
@@ -26,6 +27,20 @@ class CardParsingTests(unittest.TestCase):
         self.assertTrue(is_redeem_card("Redeem now"))
         self.assertTrue(is_redeem_card("Gift cards", href="https://rewards.microsoft.com/redeem"))
         self.assertFalse(is_redeem_card("Daily quiz", href="https://www.bing.com/"))
+
+    def test_offered_points_are_not_earnings(self):
+        self.assertEqual(offered_points("+10"), 10)
+        self.assertEqual(offered_points("+ 10"), 10)
+        self.assertIsNone(offered_points("10 points earned"))
+
+    def test_href_less_react_card_is_clickable(self):
+        card = Card("Reward tiles", 0, "Rome Mild Roman Historic",
+                    CardStatus.UNKNOWN, clickable=True,
+                    description="Historic walks in pleasant temps", points_offer=10)
+        report = card.report_entry()
+        self.assertTrue(card.can_open)
+        self.assertEqual(report["points_offer"], 10)
+        self.assertEqual(report["description"], "Historic walks in pleasant temps")
 
     def test_streak_text(self):
         self.assertEqual(extract_streak("1,234, Current day streak"), 1234)
