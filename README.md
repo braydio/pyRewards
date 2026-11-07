@@ -2,6 +2,24 @@
 
 A small Python/Selenium learning project for **inspecting the Microsoft Rewards dashboard** and optionally opening individual activities **for you to complete manually**. It retains the original Microsoft Edge workflow, but is easier to run, debug, and extend.
 
+## Open a numbered range of cards in separate tabs
+
+Use `--skip N --open M` to skip the first N positions in pyRewards' **numbered list**, then automatically open the next M cards. No prompts are required for individual cards in this mode.
+
+```powershell
+# Skip #1-#4, then open #5, #6, and #7 in three independent tabs
+.\.venv\Scripts\python.exe pyRewards.py --skip 4 --open 3
+
+# Same selection, also run the recognized legacy quiz state machine in each tab
+.\.venv\Scripts\python.exe pyRewards.py --skip 4 --open 3 --run-quizzes
+```
+
+The numbering is exactly what pyRewards prints in its initial snapshot, starting at **1**. Completed, redeem, or nonclickable cards still count toward the requested positions but are reported as skipped; they are not silently replaced with later cards. If there are fewer cards than requested, only the existing positions are considered.
+
+A fresh browser tab opens the dashboard for **each** card, and its activity tab stays open while the next card is processed. If the card itself opens another tab, pyRewards keeps the resulting activity tab and closes its temporary launcher. It leaves all selected activity tabs open at the end until you press Enter in PowerShell; then Selenium shuts down. The JSON report has `selection` and `open_results` with positions and outcomes, without activity URLs.
+
+`--open` and `--interactive` are alternative modes. `--run-quizzes` can be added to either one. The automated quiz runner can submit real interactions to Microsoft Rewards, regardless of whether you use it for tracking.
+
 ## Optional quiz navigation (restored from the 2024 exercise)
 
 This project originally had `start_quiz()`, `take_quiz()`, and `get_current_question()` functions for Bing's legacy Supersonic quiz interface. The new `pyrewards/quiz.py` restores and hardens that flow as a bounded, opt-in exercise.

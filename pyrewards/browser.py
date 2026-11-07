@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 
@@ -192,6 +192,48 @@ def open_card_for_user(driver, card: Card, timeout: int):
     if new_handles:
         driver.switch_to.window(new_handles[-1])
     return before_handles
+
+
+def open_card_in_own_tab(driver, card: Card, timeout: int,
+                         dashboard_handle: str) -> str:
+    """Open a card in an independent tab, preserving every prior activity tab.
+
+    A fresh dashboard tab is used as a launcher so both JS-driven navigation
+    and cards that open a second tab work. For the latter, discard only the
+    temporary launcher and retain the new activity tab. Any failed attempt
+    closes only tabs created for that attempt.
+    """
+    driver.switch_to.window(dashboard_handle)
+    existing = set(driver.window_handles)
+    driver.switch_to.new_window("tab")
+    launcher = driver.current_window_handle
+    try:
+        driver.get(REWARDS_URL)
+        wait_for_page(driver, timeout)
+        if not wait_for_cards(driver, timeout):
+            raise LookupError("No activity cards were loaded in the new tab.")
+
+        open_card_for_user(driver, card, timeout)
+        destination = driver.current_window_handle
+
+        if destination != launcher:
+            driver.switch_to.window(launcher)
+            driver.close()
+            driver.switch_to.window(destination)
+        return destination
+    except Exception:
+        for handle in list(driver.window_handles):
+            if handle not in existing:
+                try:
+                    driver.switch_to.window(handle)
+                    driver.close()
+                except WebDriverException:
+                    pass
+        try:
+            driver.switch_to.window(dashboard_handle)
+        except WebDriverException:
+            pass
+        raise
 
 
 def return_to_dashboard(driver, previous_handles: set[str], timeout: int) -> None:
