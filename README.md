@@ -9,13 +9,13 @@ A small Python/Selenium learning project for **inspecting the Microsoft Rewards 
 - Correctly detects new tabs and returns to the dashboard, without closing tabs that existed beforehand.
 - Uses Selenium Manager, so there is no separate EdgeDriver-manager dependency.
 - Uses a dedicated persistent browser profile for manual sign-in. No cookie-export script or passwords in source code.
-- Supports Edge and Chrome on Windows/Linux/macOS where Selenium supports them.
+- Supports Edge, Chrome, and Arch Linux's packaged Chromium (explicit binary resolution).
 - Produces a local JSON status report without storing account IDs, card URLs, or cookies.
 - Provides unit tests and GitHub Actions CI.
 
 ## Quick start
 
-Python **3.10+** and **Microsoft Edge** (or Chrome) are needed.
+Python **3.10+** and a supported browser are needed: Edge, Chrome, or Chromium.
 
 ```powershell
 git clone https://github.com/braydio/pyRewards.git
@@ -24,6 +24,22 @@ python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 .venv\Scripts\python pyRewards.py
 ```
+
+### Arch Linux / Hyprland
+
+Use the repo branch from PR #2 until it is merged:
+
+```bash
+sudo pacman -S --needed git python chromium
+git clone https://github.com/braydio/pyRewards.git
+cd pyRewards
+git switch revamp/rewards-assistant-2026
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python pyRewards.py --browser chromium --interactive
+```
+
+This explicitly selects Arch's \`/usr/bin/chromium\` instead of assuming Google Chrome is installed. The browser will open in your graphical session; do not launch it with \`sudo\`. Selenium Manager can provision the corresponding ChromeDriver if necessary (a network connection may be required on first use). A separate Chromium profile is used for manual sign-in.
 
 On Linux/macOS, activate with `source .venv/bin/activate` and use `python pyRewards.py`.
 
@@ -40,6 +56,9 @@ python pyRewards.py --interactive
 
 # Use Chrome instead of Edge
 python pyRewards.py --browser chrome --interactive
+
+# Use Chromium on Arch Linux
+python pyRewards.py --browser chromium --interactive
 
 # Custom report location and browser launch timeout
 python pyRewards.py --report runs/today.json --timeout 25

@@ -37,7 +37,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Inspect Microsoft Rewards activities and optionally open them for manual completion."
     )
-    parser.add_argument("--browser", choices=("edge", "chrome"), default="edge")
+    parser.add_argument("--browser", choices=("edge", "chrome", "chromium"), default="edge")
     parser.add_argument(
         "--profile-dir",
         type=Path,
