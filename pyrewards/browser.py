@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
@@ -26,9 +27,17 @@ def create_driver(browser: str, profile_dir: Path):
     if browser == "edge":
         options = webdriver.EdgeOptions()
         factory = webdriver.Edge
-    elif browser == "chrome":
+    elif browser in ("chrome", "chromium"):
         options = webdriver.ChromeOptions()
         factory = webdriver.Chrome
+        if browser == "chromium":
+            executable = shutil.which("chromium") or shutil.which("chromium-browser")
+            if not executable:
+                raise FileNotFoundError(
+                    "Chromium was not found on PATH. On Arch Linux run: "
+                    "sudo pacman -S chromium"
+                )
+            options.binary_location = executable
     else:
         raise ValueError(f"Unsupported browser: {browser}")
     # A dedicated persistent profile avoids touching an already-running
